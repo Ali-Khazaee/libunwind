@@ -1,0 +1,74 @@
+```yaml
+name: Build libunwind for multiple architectures
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build Linux (x86_64 and x86)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [ x86_64, x86 ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake unzip pkg-config
+          if [ "${{ matrix.arch }}" = "x86" ]; then
+            sudo apt-get install -y gcc-multilib g++-multilib libc6-dev-i386
+          fi
+
+      - name: Build libunwind (Linux)
+        run: |
+          chmod +x scripts/build-linux.sh
+          scripts/build-linux.sh ${{ matrix.arch }}
+
+      - name: Upload artifact (Linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: libunwind-${{ matrix.arch }}
+          path: libunwind-${{ matrix.arch }}.zip
+
+  build-android:
+    name: Build Android ABIs (armeabi-v7a, arm64-v8a)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        abi: [ armeabi-v7a, arm64-v8a ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install basic tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip cmake build-essential wget
+
+      - name: Download Android NDK
+        run: |
+          set -eux
+          NDK_VER=r25b
+          wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VER}-linux.zip
+          unzip -q android-ndk-${NDK_VER}-linux.zip
+          echo "${PWD}/android-ndk-${NDK_VER}" > ndk_path.txt
+      - name: Read NDK path
+        id: ndk
+        run: echo "ndk=$(cat ndk_path.txt)" >> $GITHUB_OUTPUT
+
+      - name: Build libunwind (Android)
+        run: |
+          chmod +x scripts/build-android.sh
+          scripts/build-android.sh ${{ matrix.abi }} "${{ steps.ndk.outputs.ndk }}" 21
+
+      - name: Upload artifact (Android)
+        uses: actions/upload-artifact@v4
+        with:
+          name: libunwind-android-${{ matrix.abi }}
+          path: libunwind-android-${{ matrix.abi }}.zip
